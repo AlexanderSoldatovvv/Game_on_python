@@ -42,6 +42,83 @@ particles = []
 
 offset = repeat((0, 0))
 
+
+def gameProcess(self, score):
+    while True:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                exit()
+            elif event.type == pygame.KEYDOWN:
+                check_input(event.key, True)
+            elif event.type == pygame.KEYUP:
+                check_input(event.key, False)
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                shoot()
+            elif event.type == pygame.K_ESCAPE:
+                check_input(event.key, False)
+
+        mousePos = pygame.mouse.get_pos()
+        target.x = mousePos[0] - target.width / 2
+        target.y = mousePos[1] - target.height / 2
+
+        player.velocity[0] = player_input["right"] - player_input["left"]
+        player.velocity[1] = player_input["down"] - player_input["up"]
+
+        WINDOW.blit(background, (0, 0))
+
+        display_ui()
+
+        next(spawner)
+
+        if player.health <= 0:
+            player.health = 3
+            player_input['left'] = False
+            player_input['right'] = False
+            player_input['up'] = False
+            player_input['down'] = False
+            score = 0
+            main()
+
+        objects.remove(target)
+        objects.sort(key=lambda o: o.y)
+        objects.append(target)
+
+        for p in particles:
+            p.image.set_alpha(p.image.get_alpha() - 1)
+            if p.image.get_alpha() == 0:
+                objects.remove(p)
+                particles.remove(p)
+                continue
+            objects.remove(p)
+            objects.insert(0, p)
+
+        if target.width > 50:
+            target.width -= 2
+            target.height -= 2
+
+        for obj in objects:
+            obj.update()
+
+        for b in bullets:
+            if BOUNDS_X[0] <= b.x <= BOUNDS_X[1] and BOUNDS_Y[0] <= b.y <= BOUNDS_Y[1]:
+                continue
+            bullets.remove(b)
+            objects.remove(b)
+
+        for e in enemies:
+            if check_collisions(player, e):
+                player.health -= 1
+                e.destroy()
+                continue
+            for b in bullets:
+                if check_collisions(b, e):
+                    e.take_damage(1)
+                    bullets.remove(b)
+                    objects.remove(b)
+
+        update_screen()
+
+
 class MenuButton:
     def __init__(self, x, y, width, height, color, text_color, text, active_image=None):
         self.rect = pygame.Rect(x, y, width, height)
@@ -76,73 +153,6 @@ class Menu:
     def set_state(self, new_state):
         self.state = new_state
 
-    def gameProcess(self):
-        while True:
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    exit()
-                elif event.type == pygame.KEYDOWN:
-                    check_input(event.key, True)
-                elif event.type == pygame.KEYUP:
-                    check_input(event.key, False)
-                elif event.type == pygame.MOUSEBUTTONDOWN:
-                    shoot()
-
-            mousePos = pygame.mouse.get_pos()
-            target.x = mousePos[0] - target.width / 2
-            target.y = mousePos[1] - target.height / 2
-
-            player.velocity[0] = player_input["right"] - player_input["left"]
-            player.velocity[1] = player_input["down"] - player_input["up"]
-
-            WINDOW.blit(background, (0, 0))
-
-            display_ui()
-
-            next(spawner)
-
-            if player.health <= 0:
-                self.state ='menu'
-                Menu.game_loop(self)
-
-            objects.remove(target)
-            objects.sort(key=lambda o: o.y)
-            objects.append(target)
-
-            for p in particles:
-                p.image.set_alpha(p.image.get_alpha() - 1)
-                if p.image.get_alpha() == 0:
-                    objects.remove(p)
-                    particles.remove(p)
-                    continue
-                objects.remove(p)
-                objects.insert(0, p)
-
-            if target.width > 50:
-                target.width -= 2
-                target.height -= 2
-
-            for obj in objects:
-                obj.update()
-
-            for b in bullets:
-                if BOUNDS_X[0] <= b.x <= BOUNDS_X[1] and BOUNDS_Y[0] <= b.y <= BOUNDS_Y[1]:
-                    continue
-                bullets.remove(b)
-                objects.remove(b)
-
-            for e in enemies:
-                if check_collisions(player, e):
-                    player.health -= 1
-                    e.destroy()
-                    continue
-                for b in bullets:
-                    if check_collisions(b, e):
-                        e.take_damage(1)
-                        bullets.remove(b)
-                        objects.remove(b)
-
-            update_screen()
 
     def game_loop(self):
         while True:
@@ -159,7 +169,7 @@ class Menu:
                     for button in self.buttons:
                         if button.is_clicked(event.pos):
                             if button.text == 'PLAY':
-                                Menu.gameProcess(self)
+                                gameProcess(self, score)
                             elif button.text == 'EXIT':
                                 pygame.quit()
                                 sys.exit()
@@ -194,10 +204,9 @@ class Object:
 
 
 class Entity(Object):
-    def __init__(self, x, y, width, height, tileset, speed):
+    def __init__(self, x, y, width, height, tileset, speed,):
         super().__init__(x, y, width, height, None)
         self.speed = speed
-
         self.tileset = load_tileset(tileset, 16, 16)
         self.direction = 0
         self.flipX = False
@@ -313,12 +322,14 @@ class Enemy(Entity):
             score += 1
             self.destroy()
 
+
     def destroy(self):
         spawn_particles(self.x, self.y)
         global offset
         offset = screen_shake(5, 20)
         objects.remove(self)
         enemies.remove(self)
+
 
 
 def check_input(key, value):
@@ -330,6 +341,9 @@ def check_input(key, value):
         player_input["up"] = value
     elif key == pygame.K_DOWN or key == pygame.K_s:
         player_input["down"] = value
+    elif key == pygame.K_ESCAPE:
+        pygame.quit()
+        exit()
 
 
 def load_tileset(filename, width, height):
@@ -343,7 +357,6 @@ def load_tileset(filename, width, height):
             rect = (tile_x * width, tile_y * height, width, height)
             line.append(image.subsurface(rect))
     return tileset
-
 
 def enemy_spawner():
     while True:
@@ -441,6 +454,7 @@ def main():
     menu = Menu()
     while True:
         menu.game_loop()
+
 
 if __name__ == '__main__':
     main()
